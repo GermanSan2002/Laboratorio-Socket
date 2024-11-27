@@ -5,7 +5,7 @@
 #include <arpa/inet.h>
 #include <net/if.h> // Para if_nametoindex()
 
-#define SERVER_PORT 1022    // Puerto en el que el servidor escucha
+#define SERVER_PORT 1022    // Puerto de origen del servidor
 #define CLIENT_PORT 1023    // Puerto al que se enviarán los mensajes
 #define MULTICAST_GROUP "ff02::1" // Grupo multicast para IPv6
 #define BUFFER_SIZE 200
@@ -45,6 +45,13 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
+    // Enlazar el socket de envío al puerto 1022 (para que sea el puerto de origen)
+    if (bind(sockfd_send, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Error al enlazar el socket de envío");
+        close(sockfd_send);
+        exit(EXIT_FAILURE);
+    }
+
     unsigned int ifindex = if_nametoindex("enp0s3"); // Cambiar "enp0s3" por el nombre de la interfaz
     if (ifindex == 0) {
         perror("Error al obtener el índice de la interfaz");
@@ -69,29 +76,8 @@ int main() {
 
     printf("Servidor listo para enviar mensajes al grupo multicast %s en el puerto %d.\n", MULTICAST_GROUP, CLIENT_PORT);
 
-    // *** Bucle principal para enviar y recibir mensajes ***
+    // *** Bucle principal para enviar mensajes ***
     while (1) {
-        // Comprobar si hay mensajes recibidos en el puerto 1022
-        fd_set readfds;
-        FD_ZERO(&readfds);
-        FD_SET(sockfd_recv, &readfds);
-
-        struct timeval timeout = {0, 0}; // Sin espera
-        int activity = select(sockfd_recv + 1, &readfds, NULL, NULL, &timeout);
-
-        if (activity > 0 && FD_ISSET(sockfd_recv, &readfds)) {
-            // Recibir mensaje del cliente
-            char buffer[BUFFER_SIZE];
-            int n = recvfrom(sockfd_recv, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&client_addr, &client_len);
-            if (n < 0) {
-                perror("Error al recibir mensaje");
-            } else {
-                buffer[n] = '\0';
-                printf("Mensaje recibido del cliente: %s\n", buffer);
-            }
-        }
-
-        // Enviar mensaje al grupo multicast
         printf("Ingrese un mensaje para enviar al grupo multicast (máx. %d caracteres): ", BUFFER_SIZE);
         fgets(message, BUFFER_SIZE, stdin);
 
