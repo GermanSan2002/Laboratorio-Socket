@@ -3,88 +3,67 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <net/if.h> // Para if_nametoindex()
-#include <time.h>
+#include <pthread.h>
 
-#define PORT 1023
-#define MULTICAST_GROUP "ff02::1" // Grupo multicast para IPv6
+#define SERVER_PORT 1022
+#define SERVER_IP "2001:db8::1" // Reemplaza con la dirección IPv6 del servidor
 #define BUFFER_SIZE 200
 
+void *receive_messages(void *arg);
+
 int main() {
-    int sockfd;
-    struct sockaddr_in6 local_addr, sender_addr;
-    struct ipv6_mreq group;
+    int sock;
+    struct sockaddr_in6 server_addr;
     char buffer[BUFFER_SIZE];
-    socklen_t sender_len = sizeof(sender_addr);
 
-    printf("Cliente iniciado.\n");
-
-    // Crear el socket
-    sockfd = socket(AF_INET6, SOCK_DGRAM, 0);
-    if (sockfd < 0) {
+    sock = socket(AF_INET6, SOCK_STREAM, 0);
+    if (sock < 0) {
         perror("Error al crear el socket");
         exit(EXIT_FAILURE);
     }
 
-    // Configurar la dirección local
-    memset(&local_addr, 0, sizeof(local_addr));
-    local_addr.sin6_family = AF_INET6;
-    local_addr.sin6_port = htons(PORT);
-    local_addr.sin6_addr = in6addr_any;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin6_family = AF_INET6;
+    server_addr.sin6_port = htons(SERVER_PORT);
+    inet_pton(AF_INET6, SERVER_IP, &server_addr.sin6_addr);
 
-    if (bind(sockfd, (struct sockaddr *)&local_addr, sizeof(local_addr)) < 0) {
-        perror("Error al enlazar el socket");
-        close(sockfd);
+    if (connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Error al conectar al servidor");
+        close(sock);
         exit(EXIT_FAILURE);
     }
 
-    // Configurar la interfaz multicast
-    unsigned int ifindex = if_nametoindex("enp0s3"); // Cambiar "enp0s3" si tu interfaz tiene otro nombre
-    if (ifindex == 0) {
-        perror("Error al obtener el índice de la interfaz");
-        close(sockfd);
-        exit(EXIT_FAILURE);
-    }
+    printf("Conectado al servidor.\n");
 
-    // Unirse al grupo multicast
-    if (inet_pton(AF_INET6, MULTICAST_GROUP, &group.ipv6mr_multiaddr) <= 0) {
-        perror("Error en inet_pton");
-        close(sockfd);
-        exit(EXIT_FAILURE);
-    }
-    group.ipv6mr_interface = ifindex;
-
-    if (setsockopt(sockfd, IPPROTO_IPV6, IPV6_ADD_MEMBERSHIP, &group, sizeof(group)) < 0) {
-        perror("Error al unirse al grupo multicast");
-        close(sockfd);
-        exit(EXIT_FAILURE);
-    }
-
-    printf("Cliente listo para recibir mensajes en el grupo multicast %s en el puerto %d.\n", MULTICAST_GROUP, PORT);
+    pthread_t receive_thread;
+    pthread_create(&receive_thread, NULL, receive_messages, &sock);
 
     while (1) {
-        int n = recvfrom(sockfd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&sender_addr, &sender_len);
-        if (n < 0) {
-            perror("Error al recibir mensaje");
-            continue;
+        printf("Ingrese un mensaje: ");
+        fgets(buffer, BUFFER_SIZE, stdin);
+
+        if (strcmp(buffer, "DESCONECTAR\n") == 0) {
+            send(sock, buffer, strlen(buffer), 0);
+            break;
         }
-        buffer[n] = '\0';
 
-        // Obtener la fecha y hora actual
-        time_t now = time(NULL);
-        char *time_str = ctime(&now);
-        time_str[strlen(time_str) - 1] = '\0'; // Eliminar salto de línea
-
-        char sender_ip[INET6_ADDRSTRLEN];
-        inet_ntop(AF_INET6, &sender_addr.sin6_addr, sender_ip, sizeof(sender_ip));
-
-        printf("\nMensaje recibido:\n");
-        printf("- Fecha y hora: %s\n", time_str);
-        printf("- IP origen: %s\n", sender_ip);
-        printf("- Puerto origen: %d\n", ntohs(sender_addr.sin6_port));
-        printf("- Contenido: %s\n", buffer);
+        send(sock, buffer, strlen(buffer), 0);
     }
 
-    close(sockfd);
+    close(sock);
     return 0;
+}
+
+void *receive_messages(void *arg) {
+    int sock = *(int *)arg;
+    char buffer[BUFFER_SIZE];
+    ssize_t n;
+
+    while ((n = recv(sock, buffer, BUFFER_SIZE, 0)) > 0) {
+        buffer[n] = '\0';
+        printf("Mensaje del servidor: %s\n", buffer);
+    }
+
+    printf("Conexión cerrada por el servidor.\n");
+    pthread_exit(NULL);
 }
