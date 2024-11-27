@@ -23,7 +23,7 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    // Configurar la interfaz para multicast
+    // Configurar la interfaz multicast
     unsigned int ifindex = if_nametoindex("enp0s3"); // Cambiar "enp0s3" si tu interfaz tiene otro nombre
     if (ifindex == 0) {
         perror("Error al obtener el índice de la interfaz");
