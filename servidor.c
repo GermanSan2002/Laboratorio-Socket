@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <net/if.h> // Para if_nametoindex()
 
 #define PORT 1022
 #define MULTICAST_GROUP "ff02::1" // Grupo multicast para IPv6
@@ -19,6 +20,19 @@ int main() {
     sockfd = socket(AF_INET6, SOCK_DGRAM, 0);
     if (sockfd < 0) {
         perror("Error al crear el socket");
+        exit(EXIT_FAILURE);
+    }
+
+    // Configurar la interfaz para multicast
+    unsigned int ifindex = if_nametoindex("enp0s3"); // Cambiar "enp0s3" si tu interfaz tiene otro nombre
+    if (ifindex == 0) {
+        perror("Error al obtener el índice de la interfaz");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+    if (setsockopt(sockfd, IPPROTO_IPV6, IPV6_MULTICAST_IF, &ifindex, sizeof(ifindex)) < 0) {
+        perror("Error al configurar la interfaz multicast");
+        close(sockfd);
         exit(EXIT_FAILURE);
     }
 
